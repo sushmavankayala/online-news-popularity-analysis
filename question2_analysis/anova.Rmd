@@ -1,0 +1,69 @@
+---
+title: "News popularity project"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+# Read data
+```{r}
+data <- read.csv("filtered_data.csv")
+
+# create a categorical variable for logistic regression analysis -- Not used
+data$is_outlier = data$shares>30000
+```
+
+# Levens test to verify constant variance
+
+```{r}
+library(car)
+#install.packages("car")
+
+# Perform Levene's Test for Homogeneity of Variances
+levene_test <- leveneTest(data$shares, data$Category)
+
+# Print the results
+print(levene_test)
+
+```
+
+# Performing ANOVA test
+1. Anova with equal variance 
+2. Welch's Anova with unequal variance
+```{r}
+# Assuming 'data' is your DataFrame, 'shares' is the numeric dependent variable,
+# and 'data_channel' is the factor (categorical variable) representing different groups.
+anova_result <- aov(shares ~ Category, data = data)
+summary(anova_result)
+
+# Perform Welch's ANOVA for unequal variances
+welch_test <- oneway.test(data$shares ~ data$Category, var.equal = FALSE)
+print(welch_test)
+
+```
+## Tukeys test for pairwise comparisons
+```{r}
+# Perform Tukey's HSD test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# Plotting the results
+plot(tukey_result)
+```
+
+
+# Bonferroni adjustment
+```{r}
+# Load the necessary library if not already loaded
+# install.packages("lsmeans")
+library(lsmeans)
+
+# Assuming 'model' is your fitted ANOVA model
+
+# Perform pairwise comparisons with Bonferroni correction
+bonferroni_result <- lsmeans(anova_result, pairwise ~ Category, adjust = "bonferroni")
+
+# Print the summary of post hoc test results
+print(bonferroni_result)
+
+```

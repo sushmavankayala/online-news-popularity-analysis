@@ -1,0 +1,384 @@
+---
+title: "stats_proj_logistic"
+output: html_document
+date: "2024-03-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+1 take dataset
+2  since I want to check popularity, I converted number of shares into a binary categorical variable with >30000 shares as popular.
+3 I want to analyse how keywords impact the popularity.
+4 For this, I used a total of 10 related variables.
+5. Out of the 10 keywords, only 4 keywords i.e.,
+  a. Average number of shares of the best keyword based on historical data (lets call it kw_best_avg)
+  b. Average number of shares of the worst keyword based on historical data (lets call it kw_worst_avg)
+  c. Average number of shares of the average keyword based on historical data (lets call it kw_avg_avg)
+  made logical sense. The other 6 fields are checking for max and min number of shares for a particular keyword(in historical data) which are extremes and do not represent the bulk of the data. Also, by design, since they check maximum and minimum number of shares for best/average/worst keyword in an article, they will high multi-collinearity with the already selected keywords derived fields (1,2,3). If I use highly multi-collinear explanatory variables in the model, the standard errors of the logit (effect) coefficients will become inflated. We might also risk overfitting the data if we use too many explanatory variables. Due to these reasons, I have narrowed down my analysis to only the aforementioned 4 variables.
+  
+  https://www.researchgate.net/profile/Saroje-Sarkar/publication/261667769_Collinearity_diagnostics_of_binary_logistic_regression_model/links/56472c7b08ae54697fbb9c62/Collinearity-diagnostics-of-binary-logistic-regression-model.pdf
+6.Since my outcome variable is a binary categorical variable, logistic regression is applied.
+7. Check different assumptions of logistic regression.
+8. I took the four variables and fit a logistic regression. I got a residual deviance of --, AIC score of --.
+9. THen I reduced the model to see if number of shares is actually useful
+10. Then I reduced the model again to see if kw_worst_avg is actually useful (many values are -1 whihc dont make sense).
+11. I understood that while the deviance is slightly lower, it is not a big difference. Hence, I removed it
+12. Now, I wanted to check how category and kw_avg_avg and kw_best_avg interact with each otehr. I did an anova test follwed by multiple 2 sample t-tests with boneferroni corrections. I foudn that all categories were different. 
+13. Since there were a lot of significant results, I also wanted to check if adding category as an interaction variablke with kw_avg_avg and kw_best_avg would make the model better. 
+14. I ran the test and found that the deviance decreased and the AIC score increased. Also the BIC score increased so I feel that the model is both better and les cpmplex without adding the category as an interaction variable
+
+
+
+
+Question1: What all metrics to use for telling if logistic regression is best? AIC, BIC, Residual Deviance
+Question2: What if not all are giving same trend?
+Question3: If the differnce is not huge, can we ignore the model which is more complex?
+Question4: I got significant relsults but odds ratio very close to 1. Should I infer it as significant but not practical difference?
+```{r}
+library(pastecs)
+library(glmmTMB); library(performance)
+data <- read.csv("filtered_data.csv")
+
+data$is_outlier = data$shares>30000
+data$kw_avg_avg = (data$kw_avg_avg)
+data$kw_avg_min = (data$kw_avg_min)
+data$kw_avg_max = (data$kw_avg_max)
+model = glm(is_outlier ~ kw_min_avg + kw_avg_avg + kw_max_avg, data = data, family = binomial)
+check_collinearity(model)
+
+data$is_popular = data$is_outlier
+summary(model)
+data
+stat.desc(data$kw_avg_avg)
+```
+```{r}
+data$kw_best_avg = data$kw_avg_max
+data$kw_worst_avg = data$kw_avg_min
+data$kw_avg_avg = data$kw_avg_avg
+stat.desc(data$kw_avg_max)
+stat.desc(data$kw_avg_min)
+stat.desc(data$kw_avg_avg)
+stat.desc(data$num_keywords)
+min(data$num_keywords)
+max(data$num_keywords)
+mean(data$num_keywords)
+sd(data$num_keywords)
+summary(data[c("kw_best_avg", "kw_worst_avg", "kw_avg_avg")])
+data[data$is_popular == 1,]
+```
+
+```{r}
+
+# Setting up the layout
+par( mfcol= c(2,2)) 
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+
+# Assuming your data frame is named 'data' and contains columns:
+# kw_avg_avg, kw_avg_max, kw_avg_min, num_keywords, is_popular
+
+# Create a new data frame to store mean values for each group
+mean_data <- data %>%
+  group_by(is_popular) %>%
+  summarise(mean_kw_avg_avg = mean(kw_avg_avg),
+            mean_kw_avg_max = mean(kw_avg_max),
+            mean_kw_avg_min = mean(kw_avg_min),
+            mean_num_keywords = mean(num_keywords))
+
+# Function to remove outliers from a vector
+remove_outliers <- function(x) {
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = TRUE)
+  H <- 1.5 * IQR(x, na.rm = TRUE)
+  x[x < (qnt[1] - H)] <- NA
+  x[x > (qnt[2] + H)] <- NA
+  return(x)
+}
+
+# Remove outliers from the data
+data_cleaned <- data %>%
+  mutate(across(c(kw_avg_avg, kw_avg_max, kw_avg_min, num_keywords), remove_outliers))
+
+# Plot boxplots
+boxplot_kwa <- ggplot(data_cleaned, aes(x = factor(is_popular), y = kw_avg_avg)) +
+  geom_boxplot() +
+  geom_point(data = mean_data, aes(x = factor(is_popular), y = mean_kw_avg_avg), color = "red", size = 3) +
+  labs(x = "is_popular", y = "kw_avg_avg") 
+
+boxplot_kwm <- ggplot(data_cleaned, aes(x = factor(is_popular), y = kw_avg_max)) +
+  geom_boxplot() +
+  geom_point(data = mean_data, aes(x = factor(is_popular), y = mean_kw_avg_max), color = "red", size = 3) +
+  labs(x = "is_popular", y = "kw_best_avg") 
+
+boxplot_kwn <- ggplot(data_cleaned, aes(x = factor(is_popular), y = kw_avg_min)) +
+  geom_boxplot() +
+  geom_point(data = mean_data, aes(x = factor(is_popular), y = mean_kw_avg_min), color = "red", size = 3) +
+  labs(x = "is_popular", y = "kw_worst_avg") 
+
+boxplot_num_keywords <- ggplot(data_cleaned, aes(x = factor(is_popular), y = num_keywords)) +
+  geom_boxplot() +
+  geom_point(data = mean_data, aes(x = factor(is_popular), y = mean_num_keywords), color = "red", size = 3) +
+  labs(x = "is_popular", y = "num_keywords") 
+
+# Combine plots
+require(gridExtra)
+plot1 <- qplot(1)
+plot2 <- qplot(1)
+grid.arrange(boxplot_kwa, boxplot_kwm, boxplot_kwn, boxplot_num_keywords,ncol=2)
+
+# Plotting boxplots without outliers
+boxplot(kw_avg_avg ~ is_popular, data = data, outline = FALSE, xlab = "is_popular", ylab = "kw_avg_avg")
+boxplot(kw_avg_max ~ is_popular, data = data, outline = FALSE, xlab = "is_popular", ylab = "kw_best_max")
+boxplot(kw_avg_min ~ is_popular, data = data, outline = FALSE, xlab = "is_popular", ylab = "kw_worst_min")
+boxplot(num_keywords ~ is_popular, data = data, outline = FALSE, xlab = "is_popular", ylab = "num_keywords")
+```
+ 
+
+```{r}
+model = glm(is_popular ~ kw_avg_avg + kw_best_avg + kw_worst_avg + num_keywords, data = data, family = binomial)
+model_interact = glm(is_popular ~ kw_worst_avg*kw_best_avg*kw_avg_avg + num_keywords, data = data, family = binomial)
+
+summary(model)
+summary(model_interact)
+exp(confint.default(model))
+exp(model$coefficients) 
+cat("AIC of interaction Model:",AIC(model_interact),"\n")
+cat("AIC of non-interaction Model:",AIC(model),"\n")
+cat("BIC of interaction Model:",BIC(model_interact),"\n")
+cat("BIC of non-interaction Model:",BIC(model),"\n")
+cat("Residual deviance of interaction model: ",model_interact$deviance,"\n")
+cat("Residual deviance of non-interaction model: ",model$deviance,"\n")
+cat("Confidence intervals for log odds of interaction model is:","\n")
+exp(confint.default(model_interact))
+cat("Confidence intervals for log odds of interaction model is:","\n")
+exp(confint.default(model))
+```
+
+
+
+```{r}
+               
+
+full_model <- glm(data$is_popular ~ data$num_keyword + data$kw_avg_avg*data$kw_best_avg*data$kw_worst_avg, data = data, family = 'binomial')
+reduced_model <- glm(data$is_popular ~ data$num_keyword + data$kw_avg_avg + data$kw_best_avg + data$kw_worst_avg, data = data, family = 'binomial')
+anova_res <- anova(reduced_model, full_model, test='LRT')
+print(anova_res)
+
+
+
+```
+
+
+
+#ALL THIS IS ADDITIONAL ANALYSIS NOT INCLUDED IN THE REPORT
+
+```{r}
+full_model <- glm(is_outlier ~ num_keywords + kw_avg_avg + kw_avg_max + kw_avg_min, data = data, family = 'binomial')
+reduced_model <- glm(is_outlier ~ kw_avg_avg + kw_avg_max + kw_avg_min, data = data, family = 'binomial')
+#bad_model <- glm(is_outlier ~ num_keywords, data = data, family = 'binomial')
+#interaction_model <- glm(is_outlier ~ kw_avg_avg*Category + kw_avg_max, data = data, family = 'binomial')
+anova_res <- anova(reduced_model, full_model, test='LRT')
+print(anova_res)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#model = glm(is_outlier ~ data$kw_avg_avg*data$kw_max_avg*data$kw_min_avg, data = data, family = binomial)
+#summary(model)
+```
+
+```{r}
+library(ggplot2)
+
+# Assuming your data frame is named 'data' with columns 'continuous_var' and 'binary_var'
+ggplot(data, aes(x = is_outlier, y = kw_avg_avg)) +
+  geom_boxplot() +  # Creates the boxplot
+  labs(title = "Boxplot of Continuous Variable by Binary Variable",
+       x = "Is Popular",
+       y = "kw_avg_avg") +
+  theme_bw()  # Optional: adjust plot aesthetics
+
+
+```
+On mean of the The average number of shares for the average keyword in an article is higher for the popular group than the non-popular group.
+
+```{r}
+# Assuming your data frame is named 'data' with columns 'continuous_var' and 'binary_var'
+ggplot(data, aes(x = is_popular, y = num_keywords)) +
+  geom_boxplot() +  # Creates the boxplot
+  labs(title = "Boxplot of Continuous Variable by Binary Variable",
+       x = "Is Popular",
+       y = "num_keywords") +
+  theme_bw()  # Optional: adjust plot aesthetics
+plot(data$is_popular,data$num_keywords)
+```
+
+
+```{r}
+ggplot(data, aes(x = is_outlier, y = kw_avg_max)) +
+  geom_boxplot() +  # Creates the boxplot
+  labs(title = "Boxplot of Continuous Variable by Binary Variable",
+       x = "Is Popular",
+       y = "num_keywords") +
+  theme_bw()  # Optional: adjust plot aesthetics
+```
+
+
+```{r}
+ggplot(data, aes(x = is_outlier, y = kw_avg_min)) +
+  geom_boxplot() +  # Creates the boxplot
+  labs(title = "Boxplot of Continuous Variable by Binary Variable",
+       x = "Is Popular",
+       y = "num_keywords") +
+  theme_bw()  # Optional: adjust plot aesthetics
+```
+
+```{r}
+# Assuming 'data' is your DataFrame, 'shares' is the numeric dependent variable,
+# and 'data_channel' is the factor (categorical variable) representing different groups.
+anova_result <- aov(kw_avg_avg ~ Category, data = data)
+summary(anova_result)
+
+
+```
+```{r}
+# Perform Tukey's HSD test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# Plotting the results
+plot(tukey_result)
+```
+```{r}
+# Obtain residuals
+residuals <- residuals(model)
+
+# Residual Plot
+plot(fitted(model), residuals, xlab = "Fitted values", ylab = "Residuals", main = "Residual Plot")
+abline(h = 0, col = "red")  # Add horizontal line at y = 0
+
+```
+```{r}
+# Load the necessary library if not already loaded
+# install.packages("lsmeans")
+library(lsmeans)
+
+# Assuming 'model' is your fitted ANOVA model
+
+# Perform pairwise comparisons with Bonferroni correction
+bonferroni_result <- lsmeans(anova_result, pairwise ~ Category, adjust = "bonferroni")
+print(bonferroni_result)
+
+
+plot(as.factor(data$is_outlier),data$kw_avg_avg, xlab = 'Popular or not', ylab='kw_avg_avg')
+table(data$is_outlier)
+
+
+```
+
+
+
+```{r}
+full_model <- glm(is_outlier ~ num_keywords + kw_avg_avg + kw_avg_max + kw_avg_min, data = data, family = 'binomial')
+reduced_model <- glm(is_outlier ~ kw_avg_avg + kw_avg_max, data = data, family = 'binomial')
+bad_model <- glm(is_outlier ~ num_keywords, data = data, family = 'binomial')
+interaction_model <- glm(is_outlier ~ kw_avg_avg*Category + kw_avg_max, data = data, family = 'binomial')
+anova_res <- anova(reduced_model, full_model, test='LRT')
+print(anova_res)
+print(full_model)
+BIC(full_model)
+BIC(full_model)
+print("reduced model")
+print("BIC")
+BIC(reduced_model)
+print("AIC")
+AIC(reduced_model)
+print("confidence interval")
+exp(confint.default(reduced_model))
+#BIC(bad_model)
+#AIC(bad_model)
+BIC(interaction_model)
+AIC(interaction_model)
+interaction_model2 <- glm(is_outlier ~ kw_avg_avg*Category + kw_avg_max*Category, data = data, family = 'binomial')
+BIC(interaction_model2)
+AIC(interaction_model2)
+summary(interaction_model2)
+exp(confint.default(interaction_model2))
+
+
+
+```
+
+
+```{r}
+full_model <- glm(data$is_outlier ~ data$kw_avg_avg + data$kw_avg_max + data$kw_avg_min, data = data, family = 'binomial')
+reduced_model <- glm(data$is_outlier ~ data$kw_max_avg + data$kw_avg_max, data = data, family = 'binomial')
+anova_res <- anova(reduced_model, full_model, test='LRT')
+print(anova_res)
+```
+
+
+
+
+```{r}
+full_model <- glm(data$is_outlier ~ data$kw_avg_avg*data$kw_max_avg*data$kw_min_avg , data = data, family = 'binomial')
+reduced_model <- glm(data$is_outlier ~ data$kw_avg_avg + data$kw_avg_max, data = data, family = 'binomial')
+anova_res <- anova(full_model, reduced_model, test='LRT')
+print(anova_res)
+```
+
+```{r}
+full_model <- glm(data$is_outlier ~ data$kw_avg_avg + data$kw_max_avg + data$kw_min_avg, data = data, family = 'binomial')
+reduced_model <- glm(data$is_outlier ~ data$kw_avg_avg + data$kw_avg_max, data = data, family = 'binomial')
+anova_res <- anova(full_model, reduced_model, test='LRT')
+print(anova_res)
+```
+```{r}
+model = glm(is_outlier ~ Category*kw_avg_avg + Category*kw_min_avg + Category*kw_max_avg, data = data, family = binomial)
+summary(model)
+```

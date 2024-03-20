@@ -1,0 +1,122 @@
+---
+title: "News Popularity Analysis: Image and Video"
+author: "Sushma"
+date: "2024-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ROCR)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+```
+
+## Reading data from csv 
+
+```{r}
+news_data <- read.csv("/Users/sushmavankayala/Documents/DATA_557/OnlineNewsPopularity/data/OnlineNewsPopularity.csv")
+```
+
+## Columns available in the dataset
+
+```{r}
+print(colnames(news_data))
+```
+## Add columns to the dataframe - category, has_image, has_video, num_imgs_std, num_videos_std, is_popular
+
+```{r}
+news_data = news_data %>%
+  mutate(category = case_when(
+    data_channel_is_lifestyle == 1  ~ "Lifestyle",
+    data_channel_is_entertainment == 1  ~ "Entertainment",
+    data_channel_is_bus == 1  ~ "Business",
+    data_channel_is_socmed == 1  ~ "Social Media",
+    data_channel_is_tech == 1  ~ "Technology",
+    data_channel_is_world == 1  ~ "World",
+    TRUE  ~ "Other",
+    ),
+    has_image = case_when(
+      num_imgs > 1 ~ "Yes",
+      TRUE ~ "No"
+    ),
+    has_video = case_when(
+      num_videos > 1 ~ "Yes",
+      TRUE ~ "No"
+    ),
+    )
+
+news_data$num_imgs_std = scale(news_data$num_imgs)
+
+news_data$num_videos_std = scale(news_data$num_videos)
+
+news_data$is_popular = news_data$shares > 30000
+
+```
+
+## Checking logistic assumptions - multicolleniarity. Testing between images and videos
+
+```{r}
+par(cex = 0.75)
+
+# Assuming house_data is a data frame
+data_list <- list(news_data$num_imgs_std, news_data$num_videos_std)
+
+# Convert the list of variables into a matrix and calculate correlations
+correlation_values <- cor(do.call(cbind, data_list))
+
+# Add column names to the correlation matrix
+colnames(correlation_values) <- c("Number of images(standardized)", "Number of videos(standardized)" )
+
+# Plot the correlation matrix
+corrplot(correlation_values, method = "number", bg = "#B4B4B8", number.digits = 2)
+
+```
+
+## Check if presence of images and videos influence popularity of a news article.
+### For a logistic regression model fit on the presense of images and popularity, we can do a hypothesis test on the coefficients
+```{r}
+model_0 = glm(is_popular ~ has_image + has_video, data = news_data)
+summary(model_0)
+confint(model_0)
+```
+
+## Check if number of images and videos influence popularity of a news article.
+### For a logistic regression model fit on number of images and popularity, we can do a hypothesis test on the coefficients
+```{r}
+model_1 = glm(is_popular ~ num_imgs_std + num_videos_std, data = news_data)
+summary(model_1)
+confint(model_1)
+```
+## Testing for logistic assumptions
+
+```{r}
+ggplot(news_data, aes(x = num_imgs_std, y = predict(model_1, type = "response"))) +
+  geom_point() +
+  labs(title = "Logit vs. Variable Name", x = "Number of Images(standardized)", y = "Log Odds of Popularity")
+```
+
+```{r}
+ggplot(news_data, aes(x = num_videos_std, y = predict(model_1, type = "response"))) +
+  geom_point() +
+  labs(title = "Logit vs. Variable Name", x = "Variable Name", y = "Log Odds of Popularity")
+```
+
+
+## Check if the number of images, number of videos and category influence the popularity of a news article
+
+```{r}
+model_2 = glm(is_popular ~ num_imgs_std + num_videos_std + category, data = news_data)
+summary(model_2)
+confint(model_2)
+```
+
+## Check if the number of images, number of videos and category influence the popularity of a news article, considering interaction
+
+```{r}
+model_3 = glm(is_popular ~ num_imgs_std * num_videos_std * category, data = news_data)
+summary(model_3)
+confint(model_3)
+```
+

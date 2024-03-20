@@ -1,0 +1,143 @@
+---
+title: "Final Project"
+author: "Navya"
+date: "2024-03-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+data = read.csv("C:/Users/navya/Documents/DATA557-Project/Factors-Influencing-Online-News-Popularity/data/OnlineNewsPopularity.csv")
+head(data)
+```
+
+```{r}
+data$n_tokens_content = scale(data$n_tokens_content)
+data$n_tokens_title = scale(data$n_tokens_title)
+```
+
+
+
+```{r}
+data$is_popular = data$shares>30000
+# View the modified dataset
+head(data)
+```
+
+
+
+```{r}
+# Logistic Model with only title length
+model_title = glm(is_popular ~ n_tokens_title, family=binomial, data = data)
+summary(model_title)
+```
+
+```{r}
+# Logistic Model with only content length
+model_content = glm(is_popular ~ n_tokens_content, family=binomial, data = data)
+summary(model_content)
+```
+
+```{r}
+# Logistic Model with title length and content length combined
+model_title_content_combined = glm(is_popular ~ n_tokens_content + n_tokens_title, family=binomial, data = data)
+summary(model_title_content_combined)
+```
+```{r}
+# Confidence Interval for Combined Model
+(confint(model_title_content_combined, level = 0.95))
+```
+```{r}
+# Testing logistic regression assumption - Linearity between log odds of probability and title length
+library(ggplot2)
+ggplot(data, aes(x = n_tokens_title, y = predict(model_title_content_combined, type = "response"))) +
+  geom_point() +
+  labs(title = "Logit of is_popular vs. title length", x = "Title Length", y = "Log Odds of Popularity")
+
+```
+
+```{r}
+# Testing logistic regression assumption - Linearity between log odds of probability and content length
+library(ggplot2)
+ggplot(data, aes(x = n_tokens_content, y = predict(model_title_content_combined, type = "response"))) +
+  geom_point() +
+  labs(title = "Logit of is_popular vs. content length", x = "Content Length", y = "Log Odds of Popularity")
+
+```
+```{r}
+# Testing Logistic Regression Assumption of multicollinearity
+(correlation <- cor(data[, "n_tokens_title"], data[, "n_tokens_content"]))
+```
+```{r}
+library(corrplot)
+
+par(cex = 0.75)
+
+# Assuming house_data is a data frame
+data_list <- list(data$n_tokens_title, data$data_channel_is_tech, data$data_channel_is_bus, data$data_channel_is_entertainment, data$data_channel_is_lifestyle, data$data_channel_is_socmed, data$data_channel_is_world)
+
+# Convert the list of variables into a matrix and calculate correlations
+correlation_values <- cor(do.call(cbind, data_list))
+
+# Add column names to the correlation matrix
+colnames(correlation_values) <- c("Title Length", "Category: Technology", "Category: Business", "Category: Entertainment", "Category: Lifestyle", "Category: Social Media", "Category: World")
+
+# Plot the correlation matrix
+corrplot(correlation_values, method = "number", bg = "#B4B4B8", number.digits = 2)
+```
+
+
+```{r}
+# Logistic regression model of title length, content length and their combine effect
+model_interaction = glm(is_popular ~ n_tokens_content * n_tokens_title, family=binomial, data = data)
+summary(model_interaction)
+```
+logit(is_popular) = $\beta_0$ + $\beta_1$[n_tokens_title] +     
+$\beta_2$[Category] + $\beta_3$[n_tokens_title * Category]
+
+
+
+```{r}
+library(dplyr)
+
+data <- data %>%
+  mutate(Category = case_when(
+    data_channel_is_lifestyle == 1 ~ "Lifestyle",
+    data_channel_is_entertainment == 1 ~ "Entertainment",
+    data_channel_is_bus == 1 ~ "Business",
+    data_channel_is_socmed == 1 ~ "Social Media",
+    data_channel_is_tech == 1 ~ "Technology",
+    data_channel_is_world == 1 ~ "World",
+    TRUE ~ "Other"
+  ))
+head(data$Category)
+```
+```{r}
+lm_model_total_before = glm(is_popular ~ n_tokens_title + Category, family=binomial, data = data)
+summary(lm_model_total_before)
+```
+
+```{r}
+lm_model_total = glm(is_popular ~ n_tokens_title * Category, data= data)
+summary(lm_model_total)
+```
+
+```{r}
+(confint(lm_model_total, level = 0.95))
+```
+```{r}
+(confint(lm_model_total_before, level = 0.95))
+```
+```{r}
+(summary(data$n_tokens_title))
+```
+
+```{r}
+(summary(data$n_tokens_content))
+```
+
+
+
